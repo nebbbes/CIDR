@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+
+<meta name="robots" content="noindex">
+  <meta name="viewport" content="width=device-width">
+  <title>CIDR MERGER</title>
+  <script>
+    function init(){
+        document.getElementById("input_box").focus();
+    }
+
+    function text_ip_to_int(txt){
+        var res = 0;
+        txt.split(/\./).map(function(v){res = (res * 256) + (+v) });
+        return res;
+    }
+
+    function to_range(v){
+        var matched_cidr = v.match(/(.+)\/(\d+)/);
+        if (matched_cidr) {
+            var from = text_ip_to_int(matched_cidr[1]);
+            var variable_bits = 32 - matched_cidr[2];
+            var round = 1; while (variable_bits > 0) {round = round * 2; variable_bits--;}
+            var from = Math.floor(from / round) * round;
+            var to = from + round;
+            return {from:from, to:to};
+        }
+        var matched_cidr = v.match(/(\d+\.\d+\.\d+\.\d+)\D*-\D*(\d+\.\d+\.\d+\.\d+)/);
+        if (matched_cidr) {
+            var from = text_ip_to_int(matched_cidr[1]);
+            var to = 1 + text_ip_to_int(matched_cidr[2]);
+            return {from:from, to:to};
+        }
+        var matched_cidr = v.match(/(\d+\.\d+\.\d+\.\d+)/);
+        if (matched_cidr) {
+            var from = text_ip_to_int(matched_cidr[1]);
+            var to = 1 + from;
+            return {from:from, to:to};
+        }
+    }
+
+    function merge(ranges){
+        do {
+            ranges.sort(function(a, b){ var r = a.from - b.from; if(r) {return r;} return a.to - b.to;});
+            var ended = true;
+            for (var i = 1; i < ranges.length; i++){
+                if (ranges[i].from <= ranges[i - 1].to) {
+                    var from =  ranges[i].from < ranges[i - 1].from ? ranges[i].from : ranges[i - 1].from;
+                    var to =  ranges[i].to > ranges[i - 1].to ? ranges[i].to : ranges[i - 1].to;
+                    ranges[i].from = from;
+                    ranges[i].to = to;
+                    ranges.splice(i - 1, 1);
+                    ended = false;
+                    break;
+                }
+            }
+        } while (!ended);
+    }
+
+    function to_text_ip(ip){
+        return '' + ((ip >>> 24) & 0xff) + '.' + ((ip >>> 16) & 0xff) + '.' + ((ip >>> 8) & 0xff) + '.' + (ip & 0xff);
+    }
+
+    function ranges_to_cidrs(ranges){
+        var res = '';
+        for (var j = 0; j < ranges.length; j++){
+            var range = ranges[j];
+            var from = range.from;
+            var to = range.to;
+            while (from < to) {
+                var difference = from - to;
+                var variable_bits = 0;
+                var walking_bit = 1;
+                for (i = 0; i < 32; i++){
+                    if (difference & walking_bit) {
+                        break;
+                    }
+                    walking_bit = walking_bit << 1;
+                    variable_bits++;
+                }
+                res += res.length ? ', ' : '';
+                res += to_text_ip(from) + '/' + (32 - variable_bits);
+                from += Math.pow(2, variable_bits); 
+            }
+        }
+        return res;
+    }
+
+    function ranges_to_text(ranges){
+        var res = '';
+        for (var j = 0; j < ranges.length; j++){
+            var range = ranges[j];
+            res += res.length ? ', ' : '';
+            res += range.from == range.to -1 ? to_text_ip(range.from) : to_text_ip(range.from) + '-' + to_text_ip(range.to - 1);
+        }
+        return res;
+    }
+
+    function start(){
+        var ranges = [];
+        var arr = document.getElementById("input_box").innerHTML.replace(/<[^>]*>/g, '|').split(/[\|,]/);
+        for(var i = 0; i < arr.length; i++) {
+            if (!arr[i]) continue;
+            var range = to_range(arr[i]);
+            if (!range) continue;
+            ranges.push(range);
+        }
+
+        merge(ranges);
+        var text = document.getElementById("is_cidr").checked ? ranges_to_cidrs(ranges) : ranges_to_text(ranges);
+        if (!document.getElementById("is_in_row").checked) text = text.replace(/,\s+/g, "\n");
+        var target = document.getElementById("output_box");
+        target.value = text;
+        target.hidden = false;
+        target.select();
+    }
+
+    function clear_forms(){
+        var target = document.getElementById('output_box'); 
+        target.value=''; 
+        target.hidden = true;
+
+        var target = document.getElementById('input_box');
+        target.innerHTML='';
+        target.focus();
+   }
+
+
+    </script>
+
+    <style media="screen" type="text/css">
+        body, html {
+            width: 100%;
+            height: 100%;
+            margin:0.2%;
+            padding:0.2%;
+            border: "1px"
+        }
+        .box {
+            width: 48%;
+            height:200px;
+            border: 1px solid #DDDDDD;
+            overflow-y: scroll;
+            font: 90% courier;
+            padding:0.2%;
+            margin:0.2%;
+        }
+    </style>
+</head>
+
+    <body><h1>CIDR MERGER</h1>
+    <table border="1" bordercolor="#DDDDDD" width="100%"><tbody><tr><td> 
+        <form> <p>На выходе - диапазоны или CIDR?</p>
+            <div>
+                <input type="radio" id="is_cidr" name="contact" value="CIDR" checked="true" onclick="start()">
+                <label for="is_sidr">CIDR</label>
+
+                <input type="radio" id="is_ranges" name="contact" value="диапазон" onclick="start()">
+                <label for="is_ranges">диапазоны</label>
+            </div>
+        </form>
+        </td>
+
+        <td>
+        <form> <p>На выходе - текст в одну строку или в столбец?</p>
+            <div>
+                <input type="radio" id="is_in_row" name="contact" value="row" checked="true" onclick="start()">
+                <label for="is_in_row">в строку</label>
+
+                <input type="radio" id="is_in_column" name="contact" value="column" onclick="start()">
+                <label for="is_in_column">в столбец</label>
+            </div>
+        </form>
+        </td>
+    </tr></tbody></table>
+
+    <input type="submit" onclick="start()" value="Обработать" style="width: 10%;">
+    <input type="submit" onclick="clear_forms()" value="Очистить" style="width: 10%;">
+
+    <br>
+    <div>
+        <div tabindex="0" contenteditable="true" class="box" id="input_box" style="float: left;"></div>
+        <textarea id="output_box" class="box" style="float: right;" hidden="true"></textarea>
+    </div>
+
+
+
+
+
+
+</body>
